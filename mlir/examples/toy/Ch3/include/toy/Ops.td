@@ -269,6 +269,9 @@ def ReshapeOp : Toy_Op<"reshape", [Pure]> {
 
   // Indicate that additional verification for this operation is necessary.
   let hasVerifier = 1;
+
+  // fold interface 
+  let hasFolder = 1; 
 }
 
 //===----------------------------------------------------------------------===//

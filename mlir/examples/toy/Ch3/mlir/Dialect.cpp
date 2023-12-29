@@ -346,6 +346,20 @@ mlir::LogicalResult ReshapeOp::verify() {
   return mlir::success();
 }
 
+mlir::OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
+  // Fold Reshape if its input shape the same as output 
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return nullptr;
+  
+  if (inputType != resultType) {
+    return nullptr;
+  }
+
+  return getOperand();
+}
+
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

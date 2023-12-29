@@ -125,6 +125,6 @@ struct FuseReshape : public mlir::OpRewritePattern<ReshapeOp> {
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.add<FuseReshape>(context);
-  results.add<SimplifyRedundantReshape>(context);
+  // results.add<SimplifyRedundantReshape>(context);
 
 }
