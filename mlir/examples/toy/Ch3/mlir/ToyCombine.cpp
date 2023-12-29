@@ -88,9 +88,43 @@ struct SimplifyRedundantReshape : public mlir::OpRewritePattern<ReshapeOp> {
 };
 
 
+struct FuseReshape : public mlir::OpRewritePattern<ReshapeOp> {
+  /// We register this pattern to match every toy.transpose in the IR.
+  /// The "benefit" is used by the framework to order the patterns and process
+  /// them in order of profitability.
+  FuseReshape(mlir::MLIRContext *context)
+      : OpRewritePattern<ReshapeOp>(context, /*benefit=*/1) {}
+
+  /// This method attempts to match a pattern and rewrite it. The rewriter
+  /// argument is the orchestrator of the sequence of rewrites. The pattern is
+  /// expected to interact with it to perform any changes to the IR from here.
+  mlir::LogicalResult
+  matchAndRewrite(ReshapeOp origOp,
+                  mlir::PatternRewriter &rewriter) const override {
+    
+    auto prevOp = origOp.getOperand().getDefiningOp<ReshapeOp>();
+    if (prevOp == nullptr) {
+        return mlir::failure();
+    }
+    // Fusing AffineReshape with any of the above mentioned ops might result in another AffineReshape or not,
+    // depending on the resulting input and output shapes.
+    // If the Reshape that replaces the two ops ends up being a valid AffineReshape, then it will be converted by
+    // Reshape's canonicalizer.
+    // Pay attention to ReshapeOp::build interface generated under "/build/tools/mlir/examples/toy/Ch2/include/toy/Ops.cpp.inc"
+    // void ReshapeOp::build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type resultType0, ::mlir::Value input) {
+    rewriter.replaceOpWithNewOp<ReshapeOp>(origOp, origOp.getResult().getType(), prevOp->getOperand(0));
+    // rewriter.replaceOp(origOp, {origOp.getOperand()});
+
+    return success();
+  }
+};
+
+
 /// Register our patterns as "canonicalization" patterns on the ReshapeOp so
 /// that they can be picked up by the Canonicalization framework.
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.add<ReshapeReshapeOptPattern, SimplifyRedundantReshape>(context);
+  results.add<FuseReshape>(context);
+  results.add<SimplifyRedundantReshape>(context);
+
 }
