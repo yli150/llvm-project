@@ -266,6 +266,9 @@ def ReshapeOp : Toy_Op<"reshape", [Pure]> {
 
   // Enable registering canonicalization patterns with this operation.
   let hasCanonicalizer = 1;
+
+  // Indicate that additional verification for this operation is necessary.
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

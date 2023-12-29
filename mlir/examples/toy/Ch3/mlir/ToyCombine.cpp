@@ -78,6 +78,7 @@ struct SimplifyRedundantReshape : public mlir::OpRewritePattern<ReshapeOp> {
     // auto inputType = llvm::dyn_cast<RankedTensorType>(origOp.getOperand().getType());
     auto resultType = llvm::dyn_cast<RankedTensorType>(origOp.getResult().getType());
     auto outShape = resultType.getShape();
+    // Only erase the op with output shape first dim is one. 
     if (outShape[0] == 1) {
           rewriter.replaceOp(origOp, {origOp.getOperand()});
     }

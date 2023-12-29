@@ -29,6 +29,7 @@
 #include "llvm/Support/Casting.h"
 #include <algorithm>
 #include <string>
+#include <numeric>
 
 using namespace mlir;
 using namespace mlir::toy;
@@ -47,6 +48,14 @@ void ToyDialect::initialize() {
 #include "toy/Ops.cpp.inc"
       >();
 }
+
+int64_t calcTotalShapeSize(ArrayRef<int64_t> shape) {
+    return std::accumulate(shape.begin(), shape.end(), int64_t{1}, [](int64_t acc, int64_t d) {
+        const auto mult = acc * d;
+        return mult;
+    });
+}
+
 
 //===----------------------------------------------------------------------===//
 // Toy Operations
@@ -314,6 +323,29 @@ mlir::LogicalResult TransposeOp::verify() {
   }
   return mlir::success();
 }
+
+
+//===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult ReshapeOp::verify() {
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return mlir::success();
+
+  auto inputSize = calcTotalShapeSize(inputType.getShape());
+  auto outputSize = calcTotalShapeSize(resultType.getShape());
+  if (inputSize != outputSize) {
+    return emitError()
+           << "expected result shape to be a same as input. got (input" << inputSize
+           << "vs output" << outputSize
+           << ")";
+  }
+  return mlir::success();
+}
+
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
