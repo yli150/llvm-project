@@ -21,6 +21,7 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -358,6 +359,34 @@ mlir::OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   }
 
   return getOperand();
+}
+
+
+
+//===----------------------------------------------------------------------===//
+// PermuteOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult PermuteOp::verify() {
+
+  auto perm = getPerm();
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  auto inputShape = inputType.getShape();
+  auto outputShape = resultType.getShape();
+
+  llvm::SmallVector<int64_t> expectedShape;
+  for (size_t idx=0; idx < inputShape.size(); idx++) {
+      auto odx = (cast<IntegerAttr>(perm[idx])).getInt();
+      expectedShape.push_back(inputShape[odx]);
+  }
+  bool compare = llvm::equal(outputShape, expectedShape);
+  if (!compare) {
+    return emitError()
+            << outputShape << "vs" <<  expectedShape;
+  }
+
+  return mlir::success();
 }
 
 

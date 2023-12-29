@@ -342,4 +342,32 @@ def TransposeOp : Toy_Op<"transpose", [Pure]> {
   let hasVerifier = 1;
 }
 
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+def PermuteOp : Toy_Op<"permute", [Pure]> {
+  let summary = "permutation operation";
+
+  let arguments = (ins F64Tensor:$input, 
+                   ArrayAttr:$perm);
+  let results = (outs F64Tensor);
+
+  let assemblyFormat = [{
+    `(` $input `:` type($input) `)` attr-dict `to` type(results)
+  }];
+
+  // Enable registering canonicalization patterns with this operation.
+  let hasCanonicalizer = 1;
+
+  // Allow building a TransposeOp with from the input operand.
+  let builders = [
+    OpBuilder<(ins "Value":$input)>
+  ];
+
+  // Indicate that additional verification for this operation is necessary.
+  let hasVerifier = 1;
+}
+
 #endif // TOY_OPS

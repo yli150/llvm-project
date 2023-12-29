@@ -128,3 +128,11 @@ void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
   // results.add<SimplifyRedundantReshape>(context);
 
 }
+
+
+/// Register our patterns as "canonicalization" patterns on the ReshapeOp so
+/// that they can be picked up by the Canonicalization framework.
+void PermuteOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+
+}
