@@ -60,9 +60,36 @@ void TransposeOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<SimplifyRedundantTranspose>(context);
 }
 
+
+
+struct SimplifyRedundantReshape : public mlir::OpRewritePattern<ReshapeOp> {
+  /// We register this pattern to match every toy.transpose in the IR.
+  /// The "benefit" is used by the framework to order the patterns and process
+  /// them in order of profitability.
+  SimplifyRedundantReshape(mlir::MLIRContext *context)
+      : OpRewritePattern<ReshapeOp>(context, /*benefit=*/1) {}
+
+  /// This method attempts to match a pattern and rewrite it. The rewriter
+  /// argument is the orchestrator of the sequence of rewrites. The pattern is
+  /// expected to interact with it to perform any changes to the IR from here.
+  mlir::LogicalResult
+  matchAndRewrite(ReshapeOp origOp,
+                  mlir::PatternRewriter &rewriter) const override {
+    // auto inputType = llvm::dyn_cast<RankedTensorType>(origOp.getOperand().getType());
+    auto resultType = llvm::dyn_cast<RankedTensorType>(origOp.getResult().getType());
+    auto outShape = resultType.getShape();
+    if (outShape[0] == 1) {
+          rewriter.replaceOp(origOp, {origOp.getOperand()});
+    }
+
+    return success();
+  }
+};
+
+
 /// Register our patterns as "canonicalization" patterns on the ReshapeOp so
 /// that they can be picked up by the Canonicalization framework.
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.add<ReshapeReshapeOptPattern>(context);
+  results.add<ReshapeReshapeOptPattern, SimplifyRedundantReshape>(context);
 }
