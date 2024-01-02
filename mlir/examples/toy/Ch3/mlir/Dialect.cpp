@@ -389,6 +389,8 @@ mlir::LogicalResult PermuteOp::verify() {
   return mlir::success();
 }
 
+SmallVector<int64_t> getI64SubArrayToy(ArrayAttr arrayAttr);
+
 mlir::OpFoldResult PermuteOp::fold(FoldAdaptor adaptor) {
   // Fold PermuteOp if its input shape the same as output 
   auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
@@ -398,6 +400,14 @@ mlir::OpFoldResult PermuteOp::fold(FoldAdaptor adaptor) {
   
   if (inputType != resultType) {
     return nullptr;
+  }
+
+  // Check Perm = [0, 1, 2, 3]
+  auto perm = getI64SubArrayToy(getPerm());
+  for (auto [idx, n] : llvm::enumerate(perm)) {
+    if (static_cast<int64_t>(n) != idx) {
+      return nullptr;
+    }
   }
 
   return getOperand();
