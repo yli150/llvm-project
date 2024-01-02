@@ -15,7 +15,11 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
+#include "mlir/IR/Diagnostics.h"
 #include "toy/Dialect.h"
+
 using namespace mlir;
 using namespace toy;
 
@@ -129,10 +133,62 @@ void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 }
 
+SmallVector<int64_t> getI64SubArrayToy(ArrayAttr arrayAttr,
+                                          unsigned dropFront,
+                                          unsigned dropBack) {
+  assert(arrayAttr.size() > dropFront + dropBack && "Out of bounds");
+  auto range = arrayAttr.getAsRange<IntegerAttr>();
+  SmallVector<int64_t> res;
+  res.reserve(arrayAttr.size() - dropFront - dropBack);
+  for (auto it = range.begin() + dropFront, eit = range.end() - dropBack;
+       it != eit; ++it)
+    res.push_back((*it).getValue().getSExtValue());
+  return res;
+}
 
-/// Register our patterns as "canonicalization" patterns on the ReshapeOp so
-/// that they can be picked up by the Canonicalization framework.
+struct FusePermute : public mlir::OpRewritePattern<PermuteOp> {
+
+  FusePermute(mlir::MLIRContext *context)
+      : OpRewritePattern<PermuteOp>(context, /*benefit=*/1) {}
+
+  /// This method attempts to match a pattern and rewrite it. The rewriter
+  /// argument is the orchestrator of the sequence of rewrites. The pattern is
+  /// expected to interact with it to perform any changes to the IR from here.
+  mlir::LogicalResult
+  matchAndRewrite(PermuteOp op,
+                  mlir::PatternRewriter &rewriter) const override {
+    // Look through the input of the current transpose.
+    auto prevPermute = op.getOperand().getDefiningOp<PermuteOp>();
+    // Input defined by another transpose? If not, no match.
+    if (!prevPermute)
+      return failure();
+
+    // Check output matches previous permute input type 
+    auto outType = llvm::dyn_cast<RankedTensorType>(op.getResult().getType());
+    auto prePermuteInputType = llvm::dyn_cast<RankedTensorType>(prevPermute.getOperand().getType());
+    if (outType != prePermuteInputType){
+      return failure();
+    }
+
+    // Check Perm 
+    llvm::SmallVector<int64_t> expectedShape = applyPermutation(prePermuteInputType.getShape(), 
+            getI64SubArrayToy(prevPermute.getPerm(), 0, 0));
+
+    llvm::SmallVector<int64_t> expectedOutShape = applyPermutation(expectedShape, 
+            getI64SubArrayToy(op.getPerm(), 0, 0));
+
+    if (llvm::equal(outType.getShape(), expectedOutShape)) {
+      mlir::emitWarning(op.getLoc()) << "expectedOutShape " << expectedOutShape;
+      rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getResult().getType(), prevPermute->getOperand(0));
+      return success();
+    }
+
+    return success();
+  }
+};
+
+
 void PermuteOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-
+  results.add<FusePermute>(context);
 }
