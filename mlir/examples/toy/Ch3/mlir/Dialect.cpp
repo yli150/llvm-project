@@ -389,6 +389,21 @@ mlir::LogicalResult PermuteOp::verify() {
   return mlir::success();
 }
 
+mlir::OpFoldResult PermuteOp::fold(FoldAdaptor adaptor) {
+  // Fold PermuteOp if its input shape the same as output 
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return nullptr;
+  
+  if (inputType != resultType) {
+    return nullptr;
+  }
+
+  return getOperand();
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

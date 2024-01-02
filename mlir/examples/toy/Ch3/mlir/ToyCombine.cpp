@@ -133,17 +133,30 @@ void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 }
 
-SmallVector<int64_t> getI64SubArrayToy(ArrayAttr arrayAttr,
-                                          unsigned dropFront,
-                                          unsigned dropBack) {
-  assert(arrayAttr.size() > dropFront + dropBack && "Out of bounds");
+SmallVector<int64_t> getI64SubArrayToy(ArrayAttr arrayAttr) {
   auto range = arrayAttr.getAsRange<IntegerAttr>();
   SmallVector<int64_t> res;
-  res.reserve(arrayAttr.size() - dropFront - dropBack);
-  for (auto it = range.begin() + dropFront, eit = range.end() - dropBack;
+  res.reserve(arrayAttr.size());
+  for (auto it = range.begin(), eit = range.end();
        it != eit; ++it)
     res.push_back((*it).getValue().getSExtValue());
   return res;
+}
+
+template <typename T>
+mlir::IntegerAttr getIntAttr(mlir::MLIRContext* ctx, T val) {
+    return mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), static_cast<int64_t>(val));
+}
+
+template <class Range>
+mlir::ArrayAttr getIntArrayAttr(mlir::MLIRContext* ctx, Range&& range) {
+    SmallVector<mlir::Attribute> attrs;
+
+    for (auto&& val : range) {
+        attrs.push_back(getIntAttr(ctx, val));
+    }
+
+    return mlir::ArrayAttr::get(ctx, attrs);
 }
 
 struct FusePermute : public mlir::OpRewritePattern<PermuteOp> {
@@ -172,14 +185,16 @@ struct FusePermute : public mlir::OpRewritePattern<PermuteOp> {
 
     // Check Perm 
     llvm::SmallVector<int64_t> expectedShape = applyPermutation(prePermuteInputType.getShape(), 
-            getI64SubArrayToy(prevPermute.getPerm(), 0, 0));
+            getI64SubArrayToy(prevPermute.getPerm()));
 
     llvm::SmallVector<int64_t> expectedOutShape = applyPermutation(expectedShape, 
-            getI64SubArrayToy(op.getPerm(), 0, 0));
+            getI64SubArrayToy(op.getPerm()));
 
     if (llvm::equal(outType.getShape(), expectedOutShape)) {
       mlir::emitWarning(op.getLoc()) << "expectedOutShape " << expectedOutShape;
-      rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getResult().getType(), prevPermute->getOperand(0));
+      llvm::SmallVector<int64_t> nperm = {0, 1, 2, 3};
+      auto permAttr = getIntArrayAttr(getContext(), nperm);
+      rewriter.replaceOpWithNewOp<PermuteOp>(op, op.getResult().getType(), prevPermute->getOperand(0), permAttr);
       return success();
     }
 
