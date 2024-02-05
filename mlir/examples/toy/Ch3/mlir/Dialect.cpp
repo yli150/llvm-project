@@ -21,6 +21,7 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -29,6 +30,7 @@
 #include "llvm/Support/Casting.h"
 #include <algorithm>
 #include <string>
+#include <numeric>
 
 using namespace mlir;
 using namespace mlir::toy;
@@ -47,6 +49,14 @@ void ToyDialect::initialize() {
 #include "toy/Ops.cpp.inc"
       >();
 }
+
+int64_t calcTotalShapeSize(ArrayRef<int64_t> shape) {
+    return std::accumulate(shape.begin(), shape.end(), int64_t{1}, [](int64_t acc, int64_t d) {
+        const auto mult = acc * d;
+        return mult;
+    });
+}
+
 
 //===----------------------------------------------------------------------===//
 // Toy Operations
@@ -314,6 +324,96 @@ mlir::LogicalResult TransposeOp::verify() {
   }
   return mlir::success();
 }
+
+
+//===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult ReshapeOp::verify() {
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return mlir::success();
+
+  auto inputSize = calcTotalShapeSize(inputType.getShape());
+  auto outputSize = calcTotalShapeSize(resultType.getShape());
+  if (inputSize != outputSize) {
+    return emitError()
+           << "expected result shape to be a same as input. got (input" << inputSize
+           << "vs output" << outputSize
+           << ")";
+  }
+  return mlir::success();
+}
+
+mlir::OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
+  // Fold Reshape if its input shape the same as output 
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return nullptr;
+  
+  if (inputType != resultType) {
+    return nullptr;
+  }
+
+  return getOperand();
+}
+
+
+
+//===----------------------------------------------------------------------===//
+// PermuteOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult PermuteOp::verify() {
+
+  auto perm = getPerm();
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  auto inputShape = inputType.getShape();
+  auto outputShape = resultType.getShape();
+
+  llvm::SmallVector<int64_t> expectedShape;
+  for (size_t idx=0; idx < inputShape.size(); idx++) {
+      auto odx = (cast<IntegerAttr>(perm[idx])).getInt();
+      expectedShape.push_back(inputShape[odx]);
+  }
+  bool compare = llvm::equal(outputShape, expectedShape);
+  if (!compare) {
+    return emitError()
+            << outputShape << "vs" <<  expectedShape;
+  }
+
+  return mlir::success();
+}
+
+SmallVector<int64_t> getI64SubArrayToy(ArrayAttr arrayAttr);
+
+mlir::OpFoldResult PermuteOp::fold(FoldAdaptor adaptor) {
+  // Fold PermuteOp if its input shape the same as output 
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getOperand().getType());
+  auto resultType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !resultType)
+    return nullptr;
+  
+  if (inputType != resultType) {
+    return nullptr;
+  }
+
+  // Check Perm = [0, 1, 2, 3]
+  auto perm = getI64SubArrayToy(getPerm());
+  for (auto [idx, n] : llvm::enumerate(perm)) {
+    if (static_cast<int64_t>(n) != idx) {
+      return nullptr;
+    }
+  }
+
+  return getOperand();
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
